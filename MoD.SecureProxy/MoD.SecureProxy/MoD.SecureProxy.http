@@ -1,0 +1,6 @@
+@MoD.SecureProxy_HostAddress = http://localhost:5273
+
+GET {{MoD.SecureProxy_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
