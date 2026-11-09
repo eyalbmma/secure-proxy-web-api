@@ -50,6 +50,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddDbContext<ProxyDbContext>(options =>
     options.UseSqlServer(connectionString));
 builder.Services.AddScoped<OperationLookup>();
+builder.Services.AddScoped<OperationConfigurationUpdater>();
 builder.Services.AddScoped<RequestAuditor>();
 builder.Services.AddScoped<RequestValidator>();
 builder.Services.AddScoped<IKeySource, ConfigurationKeySource>();

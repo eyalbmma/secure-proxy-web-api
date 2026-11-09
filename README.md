@@ -32,7 +32,7 @@ The endpoint is `POST /api/proxy/execute`. The current provisional envelope is `
 
 ## Current implementation status
 
-The API performs operation lookup, fail-closed checks, body parameter validation, optional AES-GCM decryption, header allowlisting, bounded request/response handling, and configured upstream forwarding. Automated integration tests use an in-memory database and a recording mock upstream; they do not require SQL Server or LocalDB. Run them from the repository root with:
+The API performs operation lookup, fail-closed checks, body parameter validation, optional AES-GCM decryption, header allowlisting, bounded request/response handling, and configured upstream forwarding. An internal service supports validated operation-configuration updates with expected-rowversion conflict detection; it is not exposed as an HTTP administration endpoint. Automated tests use an in-memory database and a recording mock upstream; they do not require SQL Server or LocalDB. Run them from the repository root with:
 
 ```powershell
 dotnet test .\MoD.SecureProxy\MoD.SecureProxy.sln
