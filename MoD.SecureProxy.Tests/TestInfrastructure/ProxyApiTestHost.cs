@@ -20,6 +20,14 @@ public sealed record ProxySeedOptions
     public int TimeoutMilliseconds { get; init; } = 2_000;
     public long MaximumRequestSizeBytes { get; init; } = 200_000;
     public long MaximumResponseSizeBytes { get; init; } = 2_000_000;
+    public AuditFailureMode AuditFailureMode { get; init; }
+}
+
+public enum AuditFailureMode
+{
+    None,
+    FailInitialWrite,
+    FailCompletionWrite
 }
 
 public sealed class ProxyApiTestHost : IDisposable
@@ -45,7 +53,11 @@ public sealed class ProxyApiTestHost : IDisposable
         options ??= new ProxySeedOptions();
         var databaseName = DatabaseNamePrefix + Guid.NewGuid().ToString("N");
         var upstream = new RecordingHttpMessageHandler();
-        var factory = new TestWebApplicationFactory(databaseName, upstream, options.MaximumResponseSizeBytes);
+        var factory = new TestWebApplicationFactory(
+            databaseName,
+            upstream,
+            options.MaximumResponseSizeBytes,
+            options.AuditFailureMode);
         var client = factory.CreateClient();
 
         await using var scope = factory.Services.CreateAsyncScope();
@@ -142,7 +154,8 @@ public sealed class ProxyApiTestHost : IDisposable
     private sealed class TestWebApplicationFactory(
         string databaseName,
         RecordingHttpMessageHandler upstream,
-        long maximumResponseSizeBytes) : WebApplicationFactory<Program>
+        long maximumResponseSizeBytes,
+        AuditFailureMode auditFailureMode) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -163,7 +176,9 @@ public sealed class ProxyApiTestHost : IDisposable
                 services.RemoveAll<DbContextOptions<ProxyDbContext>>();
                 services.RemoveAll<ProxyDbContext>();
                 services.AddDbContext<ProxyDbContext>(options =>
-                    options.UseInMemoryDatabase(databaseName));
+                    options
+                        .UseInMemoryDatabase(databaseName)
+                        .AddInterceptors(new AuditSaveChangesFailureInterceptor(auditFailureMode)));
 
                 services.RemoveAll<IHttpClientFactory>();
                 services.AddSingleton<IHttpClientFactory>(new RecordingHttpClientFactory(upstream));

@@ -222,6 +222,51 @@ public sealed class ProxyExecutionTests
     }
 
     [Fact]
+    public async Task InitialAuditFailureFailsClosedBeforeCallingUpstream()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync(new ProxySeedOptions
+        {
+            AuditFailureMode = AuditFailureMode.FailInitialWrite
+        });
+
+        using var response = await ExecuteAsync(host.Client, "customer.get", """
+            {"customerId":123}
+            """);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Empty(host.Upstream.Requests);
+        Assert.Empty(await host.ReadRequestLogsAsync());
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("audit_unavailable", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task CompletionAuditFailureDoesNotReplaceAReceivedUpstreamResponse()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync(new ProxySeedOptions
+        {
+            AuditFailureMode = AuditFailureMode.FailCompletionWrite
+        });
+        host.Upstream.Responder = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Accepted)
+        {
+            Content = new StringContent("accepted")
+        });
+
+        using var response = await ExecuteAsync(host.Client, "customer.get", """
+            {"customerId":123}
+            """);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("accepted", await response.Content.ReadAsStringAsync());
+        Assert.Single(host.Upstream.Requests);
+
+        var persistedLog = Assert.Single(await host.ReadRequestLogsAsync());
+        Assert.Equal("Pending", persistedLog.Outcome);
+        Assert.False(persistedLog.ForwardingOccurred);
+    }
+
+    [Fact]
     public async Task UpstreamResponseOverConfiguredLimitIsRejectedAndAudited()
     {
         using var host = await ProxyApiTestHost.CreateAsync(new ProxySeedOptions

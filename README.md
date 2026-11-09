@@ -16,15 +16,19 @@ The default development connection string points to a LocalDB instance named `Mo
 sqllocaldb create MoDSecureProxy 15.0 -s
 ```
 
-In Visual Studio, open the solution and run `Update-Database` from the NuGet Package Manager Console. The EF Core migrations create the schema. The database contains no seeded destination or operation records yet; a request cannot be forwarded until trusted configuration has been added.
-
-This increment adds the `ConfigurationChanges` table to the EF model. Generate its migration in Visual Studio's Package Manager Console (select `MoD.SecureProxy` as the default project):
+In Visual Studio, open the solution. If the configuration-history migration has not yet been generated, select `MoD.SecureProxy` as the default project in Package Manager Console and run:
 
 ```powershell
 Add-Migration AddConfigurationChangeHistory -OutputDir Data\Migrations
 ```
 
-Generating the migration does not require a running SQL Server. Apply it with `Update-Database` when the database is available, then commit the generated migration and model snapshot.
+Generating a migration does not require a running SQL Server. Once LocalDB is available, apply all migrations:
+
+```powershell
+Update-Database
+```
+
+Then run [`sql/seed-demo-configuration.sql`](sql/seed-demo-configuration.sql) against the `MoDSecureProxy` database. The script inserts a sample `customer.get` operation and its required `customerId` body rule. Both the destination and operation are inactive, and the destination URL is a placeholder. Replace it with an approved test upstream before enabling either record. The script is idempotent and does not overwrite existing records.
 
 For a different SQL Server, override `ConnectionStrings:ProxyDb` through an environment variable named `ConnectionStrings__ProxyDb`. Do not commit credentials.
 
@@ -46,6 +50,6 @@ The API performs operation lookup, fail-closed checks, body parameter validation
 dotnet test .\MoD.SecureProxy\MoD.SecureProxy.sln
 ```
 
-The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, request size limits, and unsupported methods. They also cover header filtering, upstream errors, upstream response size limits, timeouts, and caller cancellation.
+The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, request size limits, and unsupported methods. They also cover header filtering, upstream errors, upstream response size limits, timeouts, caller cancellation, and the defined audit-failure behavior. Audit failure simulation uses an EF Core interceptor; no SQL Server is needed for these tests.
 
-Path/query parameter rules, any separately authorized configuration-management endpoint, seeded sample configuration, and remaining edge-case tests are still to be completed. The configuration update service currently records history internally and is not exposed over HTTP. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.
+Path/query parameter rules, any separately authorized configuration-management endpoint, and remaining edge-case tests are still to be completed. The configuration update service currently records history internally and is not exposed over HTTP. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.

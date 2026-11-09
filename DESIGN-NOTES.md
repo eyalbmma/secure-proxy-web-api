@@ -55,6 +55,7 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 - Tests cover configured successful forwarding, upstream status/body propagation, timeouts, request-size rejection, and header filtering.
 - Rejection tests assert that the recording upstream saw no request for unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, oversized requests, and unsupported configured methods.
 - Tests verify an oversized upstream response is bounded and audited, and that caller cancellation is recorded separately from an upstream timeout.
+- Audit failure tests simulate persistence errors: failure to create the initial audit record returns `503` and prevents upstream forwarding; failure to update a completed record does not replace the upstream response, and leaves the persisted audit row pending for operational monitoring.
 - The test suite was added in this increment but has not been executed in this environment. Run it on a machine with the .NET 8 SDK.
 
 The precise `urlId` semantics and encrypted envelope remain assumptions pending clarification from the assessment owner.
@@ -66,3 +67,9 @@ The precise `urlId` semantics and encrypted envelope remain assumptions pending 
 - Successful updates now add a `ConfigurationChange` record in the same EF Core `SaveChanges` call. It stores the operator identifier and old/new values only for the non-secret fields the service allows to change; it never stores credentials, encryption keys, request headers, or request payloads.
 - InMemory tests cover valid updates, history recording, stale version preconditions, unknown operations, and invalid method/path values. They do not emulate SQL Server's `rowversion` changing during concurrent writes; verify that race on LocalDB at home.
 - Generate the migration for `ConfigurationChanges` in Visual Studio. Migration generation does not connect to SQL Server; apply it later at home.
+
+## Local sample configuration
+
+- `sql/seed-demo-configuration.sql` inserts one minimal `customer.get` operation and a required integer body parameter rule.
+- The sample destination and operation are disabled by default; the URL is intentionally a reserved placeholder. Replace it with an approved local test upstream before activating the records.
+- The script does not add credentials or encryption keys and does not modify existing records when rerun.
