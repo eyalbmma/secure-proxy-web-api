@@ -8,6 +8,17 @@ using MoD.SecureProxy.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var maxRequestBodyBytes = builder.Configuration.GetValue<long>(
+    "ProxyLimits:MaxRequestBodyBytes",
+    2_000_000);
+if (maxRequestBodyBytes <= 0)
+{
+    throw new InvalidOperationException("ProxyLimits:MaxRequestBodyBytes must be positive.");
+}
+
+builder.WebHost.ConfigureKestrel(options =>
+    options.Limits.MaxRequestBodySize = maxRequestBodyBytes);
+
 // Add services to the container.
 
 builder.Services.AddControllers()
@@ -43,6 +54,16 @@ builder.Services.AddScoped<RequestAuditor>();
 builder.Services.AddScoped<RequestValidator>();
 builder.Services.AddScoped<IKeySource, ConfigurationKeySource>();
 builder.Services.AddScoped<AesGcmPayloadDecryptor>();
+builder.Services.AddHttpClient("SecureProxyUpstream", client =>
+    client.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        AutomaticDecompression = System.Net.DecompressionMethods.GZip |
+            System.Net.DecompressionMethods.Deflate |
+            System.Net.DecompressionMethods.Brotli
+    });
+builder.Services.AddScoped<HttpForwarder>();
 
 var app = builder.Build();
 

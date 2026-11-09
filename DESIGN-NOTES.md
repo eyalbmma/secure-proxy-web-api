@@ -22,12 +22,11 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 
 ## Decisions still to implement
 
-- Validate operation parameters and apply explicit request-header allowlists before forwarding.
-- Apply bounded request and response sizes, stream data, and distinguish caller cancellation from an upstream timeout.
 - Persist audit metadata without credentials or payload contents. Initial audit-write failure blocks execution with `503`; completion writes are best-effort and logged if they fail.
-- Confirm the provisional encrypted-payload envelope against the assessment text before treating the assumed field names and empty associated data as final.
 - Trace configuration changes without recording secrets.
 - Add automated tests with a recording mock upstream and prove rejected requests were not sent.
+- Complete configuration update handling and prove SQL Server `rowversion` conflicts return `409`.
+- Support path and query parameter rules after the `urlId` contract is clarified; these currently fail closed.
 
 ## Implemented in the current increment
 
@@ -42,6 +41,13 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 - Encrypted operations use an explicit provisional envelope: `json` contains Base64 `nonce`, `ciphertext`, and `tag` fields. The nonce is 12 bytes, the authentication tag is 16 bytes, and associated data is empty. Confirm this format against the assessment before treating it as final.
 - AES-GCM authentication and plaintext JSON parsing happen before parameter validation. Invalid envelopes or authentication tags are rejected with `400`; missing/invalid key configuration is rejected with `503`. Key bytes are read by reference from configuration and cleared from memory after decryption. No key or decrypted payload is logged.
 - The local key source reads Base64 key values from `EncryptionKeys:<key-reference>` configuration (User Secrets or environment variables), never from the database or committed settings.
-- Successful decryption and validation still return `501` because upstream forwarding is not implemented yet.
+## Implemented in the forwarding increment
+
+- Valid configured operations are sent through `IHttpClientFactory`; the destination base URL, HTTP method, and relative path come only from database configuration.
+- Only explicitly allowlisted inbound headers are copied. Hop-by-hop headers, `Host`, and headers nominated by `Connection` are always excluded. Redirect following is disabled and no automatic retries are configured.
+- The configured destination timeout is applied to sending and reading the upstream response. Caller cancellation is rethrown and logged separately; an upstream timeout maps to `504`.
+- The incoming request is bounded by a global Kestrel limit and the operation's configured request size. The response is read as a stream with a configured maximum and a bounded buffer; oversized upstream responses map to `502`.
+- Upstream status codes and bodies are returned after a response is actually received. The audit record stores the upstream status and whether forwarding was attempted; payloads and headers are not logged.
+- `urlId` remains a required top-level request field under the provisional DTO assumption. Its meaning is unresolved, so it is not used to alter the destination URL, method, or path. The encrypted envelope shape is also still provisional.
 
 This document records the first implementation increment and will be updated as those decisions are implemented.

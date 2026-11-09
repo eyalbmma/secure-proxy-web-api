@@ -18,6 +18,7 @@ public sealed class OperationLookup
             .AsNoTracking()
             .Include(operation => operation.Destination)
             .Include(operation => operation.ParameterRules)
+            .Include(operation => operation.HeaderRules)
             .Include(operation => operation.EncryptionProfile)
             .SingleOrDefaultAsync(
                 operation => operation.OperationKey == operationKey,
