@@ -38,6 +38,6 @@ The API performs operation lookup, fail-closed checks, body parameter validation
 dotnet test .\MoD.SecureProxy\MoD.SecureProxy.sln
 ```
 
-The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, size limits, and unsupported methods. They also cover header filtering, upstream errors, and timeouts.
+The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, request size limits, and unsupported methods. They also cover header filtering, upstream errors, upstream response size limits, timeouts, and caller cancellation.
 
 Path/query parameter rules, configuration update APIs/history, seeded sample configuration, and remaining edge-case tests are still to be completed. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.

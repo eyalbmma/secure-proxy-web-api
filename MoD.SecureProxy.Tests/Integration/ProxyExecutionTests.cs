@@ -221,15 +221,85 @@ public sealed class ProxyExecutionTests
         Assert.True(log.ForwardingOccurred);
     }
 
+    [Fact]
+    public async Task UpstreamResponseOverConfiguredLimitIsRejectedAndAudited()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync(new ProxySeedOptions
+        {
+            MaximumResponseSizeBytes = 8
+        });
+        host.Upstream.Responder = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("response is too large")
+        });
+
+        using var response = await ExecuteAsync(host.Client, "customer.get", """
+            {"customerId":123}
+            """);
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Single(host.Upstream.Requests);
+        var log = Assert.Single(await host.ReadRequestLogsAsync());
+        Assert.Equal("UpstreamResponseTooLarge", log.FailureReason);
+        Assert.True(log.ForwardingOccurred);
+    }
+
+    [Fact]
+    public async Task CallerCancellationIsNotReportedAsAnUpstreamTimeout()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync();
+        host.Upstream.Responder = async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        };
+
+        using var cancellationSource = new CancellationTokenSource();
+        var requestTask = ExecuteAsync(
+            host.Client,
+            "customer.get",
+            """{"customerId":123}""",
+            cancellationToken: cancellationSource.Token);
+
+        await host.Upstream.WaitForRequestAsync.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellationSource.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await requestTask);
+        var log = await WaitForAuditOutcomeAsync(host, "Cancelled");
+        Assert.Equal("Cancelled", log.Outcome);
+        Assert.Equal("CallerCancelled", log.FailureReason);
+        Assert.True(log.ForwardingOccurred);
+        Assert.Single(host.Upstream.Requests);
+    }
+
     private static Task<HttpResponseMessage> ExecuteAsync(
         HttpClient client,
         string operationKey,
         string json,
-        string urlId = "123") =>
+        string urlId = "123",
+        CancellationToken cancellationToken = default) =>
         client.PostAsJsonAsync("/api/proxy/execute", new
         {
             clientId = operationKey,
             urlId,
             json = JsonSerializer.Deserialize<JsonElement>(json)
-        });
+        }, cancellationToken);
+
+    private static async Task<MoD.SecureProxy.Data.Entities.RequestLog> WaitForAuditOutcomeAsync(
+        ProxyApiTestHost host,
+        string expectedOutcome)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var logs = await host.ReadRequestLogsAsync();
+            if (logs.Count == 1 && logs[0].Outcome == expectedOutcome)
+            {
+                return logs[0];
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+
+        return Assert.Single(await host.ReadRequestLogsAsync());
+    }
 }

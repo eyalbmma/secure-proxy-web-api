@@ -12,8 +12,11 @@ public sealed record RecordedUpstreamRequest(
 public sealed class RecordingHttpMessageHandler : HttpMessageHandler
 {
     private readonly ConcurrentQueue<RecordedUpstreamRequest> _requests = new();
+    private readonly TaskCompletionSource<bool> _requestRecorded =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public IReadOnlyList<RecordedUpstreamRequest> Requests => _requests.ToArray();
+    public Task WaitForRequestAsync => _requestRecorded.Task;
 
     public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>? Responder { get; set; }
 
@@ -36,6 +39,7 @@ public sealed class RecordingHttpMessageHandler : HttpMessageHandler
             request.RequestUri?.ToString() ?? string.Empty,
             body,
             headers));
+        _requestRecorded.TrySetResult(true);
 
         if (Responder is not null)
         {

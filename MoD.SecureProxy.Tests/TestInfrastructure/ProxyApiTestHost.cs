@@ -19,6 +19,7 @@ public sealed record ProxySeedOptions
     public string HttpMethod { get; init; } = "POST";
     public int TimeoutMilliseconds { get; init; } = 2_000;
     public long MaximumRequestSizeBytes { get; init; } = 200_000;
+    public long MaximumResponseSizeBytes { get; init; } = 2_000_000;
 }
 
 public sealed class ProxyApiTestHost : IDisposable
@@ -44,7 +45,7 @@ public sealed class ProxyApiTestHost : IDisposable
         options ??= new ProxySeedOptions();
         var databaseName = DatabaseNamePrefix + Guid.NewGuid().ToString("N");
         var upstream = new RecordingHttpMessageHandler();
-        var factory = new TestWebApplicationFactory(databaseName, upstream);
+        var factory = new TestWebApplicationFactory(databaseName, upstream, options.MaximumResponseSizeBytes);
         var client = factory.CreateClient();
 
         await using var scope = factory.Services.CreateAsyncScope();
@@ -140,7 +141,8 @@ public sealed class ProxyApiTestHost : IDisposable
 
     private sealed class TestWebApplicationFactory(
         string databaseName,
-        RecordingHttpMessageHandler upstream) : WebApplicationFactory<Program>
+        RecordingHttpMessageHandler upstream,
+        long maximumResponseSizeBytes) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -151,7 +153,7 @@ public sealed class ProxyApiTestHost : IDisposable
                 {
                     ["ConnectionStrings:ProxyDb"] = "Server=(localdb)\\MSSQLLocalDB;Database=NotUsedByTests",
                     ["ProxyLimits:MaxRequestBodyBytes"] = "2000000",
-                    ["ProxyLimits:MaxResponseBodyBytes"] = "2000000",
+                    ["ProxyLimits:MaxResponseBodyBytes"] = maximumResponseSizeBytes.ToString(),
                     ["EncryptionKeys:test-key"] = Convert.ToBase64String(new byte[32])
                 });
             });

@@ -54,6 +54,7 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 - The test project uses ASP.NET Core `WebApplicationFactory`, EF Core InMemory, and a recording `HttpMessageHandler`; tests do not connect to SQL Server or LocalDB.
 - Tests cover configured successful forwarding, upstream status/body propagation, timeouts, request-size rejection, and header filtering.
 - Rejection tests assert that the recording upstream saw no request for unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, oversized requests, and unsupported configured methods.
+- Tests verify an oversized upstream response is bounded and audited, and that caller cancellation is recorded separately from an upstream timeout.
 - The test suite was added in this increment but has not been executed in this environment. Run it on a machine with the .NET 8 SDK.
 
 The precise `urlId` semantics and encrypted envelope remain assumptions pending clarification from the assessment owner.
