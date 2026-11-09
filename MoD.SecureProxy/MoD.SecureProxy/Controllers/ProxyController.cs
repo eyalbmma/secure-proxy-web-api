@@ -43,7 +43,6 @@ public sealed class ProxyController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status502BadGateway)]
-    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status501NotImplemented)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status504GatewayTimeout)]
     public async Task<IActionResult> Execute(
@@ -160,8 +159,8 @@ public sealed class ProxyController : ControllerBase
             if (!validation.IsValid && validation.IsConfigurationIssue)
             {
                 return await CompleteWithErrorAsync(
-                    auditLog, StatusCodes.Status501NotImplemented, "rule_not_supported",
-                    "The configured parameter rules are not supported yet.", "NotImplemented",
+                    auditLog, StatusCodes.Status503ServiceUnavailable, "configuration_unavailable",
+                    "The request cannot be processed at this time.", "Failed",
                     validation.ErrorCode, correlationId);
             }
 
@@ -173,13 +172,14 @@ public sealed class ProxyController : ControllerBase
                     validation.ErrorCode, correlationId);
             }
 
-            outgoingBody = decryptedPayload ??
-                Encoding.UTF8.GetBytes(request.Json!.Value.GetRawText());
+            outgoingBody = validation.BodyJson ?? Encoding.UTF8.GetBytes("{}");
 
             forwardingStarted = true;
             var forwardResult = await _httpForwarder.ForwardAsync(
                 operation,
                 outgoingBody,
+                validation.PathParameters ?? new Dictionary<string, string>(),
+                validation.QueryParameters ?? new Dictionary<string, string>(),
                 Request.Headers,
                 cancellationToken);
             auditLog.UpstreamStatusCode = forwardResult.UpstreamStatusCode;

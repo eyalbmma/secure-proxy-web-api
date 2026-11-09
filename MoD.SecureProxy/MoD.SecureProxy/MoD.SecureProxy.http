@@ -1,15 +1,15 @@
 @MoD.SecureProxy_HostAddress = https://localhost:7146
 
-# Assumed request shape only. The meaning of urlId is still unresolved.
+# Assumed request shape: json.urlId fills only the configured {urlId} path placeholder.
 POST {{MoD.SecureProxy_HostAddress}}/api/proxy/execute
 Content-Type: application/json
 Accept: application/json
 
 {
   "clientId": "customer.get",
-  "urlId": "123",
   "json": {
-    "id": 1
+    "urlId": "123",
+    "customerId": 1
   }
 }
 

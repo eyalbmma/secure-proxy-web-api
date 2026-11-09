@@ -43,10 +43,27 @@ BEGIN TRY
             (OperationKey, DestinationId, HttpMethod, RelativePath, IsActive,
              MaxRequestSizeBytes, AllowUnknownParameters, RequiresEncryption, EncryptionProfileId)
         VALUES
-            (@OperationKey, @DestinationId, N'POST', N'v1/customers', 0,
+            (@OperationKey, @DestinationId, N'POST', N'v1/customers/{urlId}', 0,
              200000, 0, 0, NULL);
 
         SET @OperationId = CONVERT(int, SCOPE_IDENTITY());
+    END;
+
+    -- Bring forward only this named, inactive placeholder sample created by an earlier script version.
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.Operations AS op
+        INNER JOIN dbo.Destinations AS destination ON destination.Id = op.DestinationId
+        WHERE op.Id = @OperationId
+          AND op.IsActive = 0
+          AND destination.Name = @DestinationName
+          AND destination.IsActive = 0
+    )
+    BEGIN
+        UPDATE dbo.Operations
+        SET RelativePath = N'v1/customers/{urlId}'
+        WHERE Id = @OperationId;
     END;
 
     IF NOT EXISTS
@@ -62,6 +79,31 @@ BEGIN TRY
              MinimumValue, MaximumValue, Location)
         VALUES
             (@OperationId, N'customerId', 1, N'integer', NULL, NULL, NULL, N'Body');
+    END;
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM dbo.ParameterRules
+        WHERE OperationId = @OperationId
+          AND ParameterName = N'urlId'
+    )
+    AND EXISTS
+    (
+        SELECT 1
+        FROM dbo.Operations AS op
+        INNER JOIN dbo.Destinations AS destination ON destination.Id = op.DestinationId
+        WHERE op.Id = @OperationId
+          AND op.IsActive = 0
+          AND destination.Name = @DestinationName
+          AND destination.IsActive = 0
+    )
+    BEGIN
+        INSERT INTO dbo.ParameterRules
+            (OperationId, ParameterName, IsRequired, DataType, MaximumLength,
+             MinimumValue, MaximumValue, Location)
+        VALUES
+            (@OperationId, N'urlId', 1, N'string', 150, NULL, NULL, N'Path');
     END;
 
     COMMIT TRANSACTION;

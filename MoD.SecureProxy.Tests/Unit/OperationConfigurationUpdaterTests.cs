@@ -79,6 +79,7 @@ public sealed class OperationConfigurationUpdaterTests
     [Theory]
     [InlineData("https://attacker.example/path", "invalid_relative_path")]
     [InlineData("../admin", "invalid_relative_path")]
+    [InlineData("v1/%2e%2e/admin", "invalid_relative_path")]
     [InlineData("v1/customers?admin=true", "invalid_relative_path")]
     [InlineData("TRACE", "unsupported_http_method")]
     public async Task InvalidConfigurationIsRejectedWithoutChangingStoredValues(

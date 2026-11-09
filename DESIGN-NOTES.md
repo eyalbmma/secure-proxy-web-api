@@ -1,76 +1,38 @@
-# Design Notes — Secure Proxy API
+# Design Notes
 
-## Current baseline
+## Architecture
 
-The supplied ZIP contains a new ASP.NET Core Web API scaffold. It does not contain a partially implemented proxy, existing database layer, or automated tests. The assessment's supplied-starter-repository requirement therefore remains unresolved; no existing defects are claimed as fixed.
+- One ASP.NET Core API project, with focused folders for controllers, data/entities, middleware, security, and services.
+- SQL Server and EF Core store destination/operation configuration, parameter and header rules, request audit, and configuration-change history.
+- EF Core `DbContext` is the data access boundary. No generic repository abstraction is used because the current reads and writes are simple and already have focused service owners.
+- `ProxyController` coordinates the request. `OperationLookup`, `RequestValidator`, `AesGcmPayloadDecryptor`, `HttpForwarder`, and `RequestAuditor` each own a narrow responsibility.
+- There is no frontend, token issuance, authentication endpoint, JWT parsing middleware, automatic retry, or cache. An administration HTTP API is outside the current scope because no authorization boundary was specified.
 
-## Initial architecture
+## Request-contract assumptions
 
-- Keep one ASP.NET Core API project and separate responsibilities into focused folders.
-- Use EF Core with SQL Server for proxy configuration and execution audit records.
-- Keep EF Core's `DbContext` as the data access boundary for now. A separate generic repository abstraction is not justified for this initial scope.
-- Use SQL Server `rowversion` on mutable configuration entities. It detects conflicting writes during configuration updates; it does not make ordinary reads detect concurrent changes.
-- Store only encryption key references in the database, never key material.
+The assessment's request example is malformed, while its processing text says that `json` must contain `urlId`. The implemented assumption is:
 
-## Request contract assumptions
+1. The envelope has `clientId` and `json` properties.
+2. `json` is a JSON object and must contain `urlId`.
+3. `urlId` is a required `Path` parameter rule. It fills only a `{urlId}` placeholder in the trusted operation `RelativePath` from SQL Server.
+4. Other path placeholders and query parameters also require explicit rules. Request parameters are separated by configured location; path/query values are not copied into the body.
+5. Caller values cannot select or override the configured base URL, HTTP method, or route template. Path values reject slash, backslash, percent-encoding, dot-segment, control, query, and fragment characters; query names/values are URI-escaped.
 
-The assessment requires a `urlId` field, but its sample request is malformed and does not establish the field's exact meaning. A tentative request shape is `clientId`, required `urlId`, and operation-specific `json`. The meaning and use of `urlId` must be confirmed or documented as an explicit assumption before request forwarding is implemented.
+This interpretation is documented as an assumption, not as an established meaning of the malformed sample. The encrypted format is also an assumption: `json` contains Base64 `nonce`, `ciphertext`, and `tag`, with a 12-byte nonce, 16-byte tag, and empty associated data. Keys are resolved by a database key-reference through configuration, not stored in SQL Server.
 
-The API scaffold now models `clientId` and `urlId` as required strings and accepts `json` as a non-null JSON value. These types are provisional assumptions, not a claim that the malformed sample defines their exact types or semantics.
+## Security and operational decisions
 
-Callers will not choose the destination URL, HTTP method, or destination path. Those values must come from trusted server-side configuration.
+- The proxy fails closed before upstream forwarding for unknown/disabled operations, inactive destinations, invalid rules or values, missing required parameters, disallowed unknown parameters, malformed encrypted payloads, invalid AES-GCM tags, unsupported content types/methods, and oversized requests.
+- Each request is correlated with `X-Correlation-Id`. Error responses are consistent and non-sensitive. Logs and audit records omit request/response payloads, keys, and credentials.
+- Request and response size bounds are enforced. Upstream response reading is streamed into a bounded buffer. `IHttpClientFactory` manages clients, redirects are disabled, the configured timeout applies to send/read, and caller cancellation remains distinct from upstream timeout. No automatic retry is used because retry safety depends on operation semantics.
+- Initial audit persistence is mandatory and fails closed. Audit completion is best-effort after a request has been forwarded; failures are logged for operations monitoring and do not replace the received upstream result.
+- Mutable operation updates compare the supplied SQL Server `rowversion`, also use EF Core's concurrency predicate at save time, and record the allowed non-secret before/after fields in the same save. The update service is not exposed over HTTP.
+- No cache is used, so configuration changes are observed on subsequent database lookups without invalidation semantics.
 
-## Decisions still to implement
+## Verification status and limits
 
-- Persist audit metadata without credentials or payload contents. Initial audit-write failure blocks execution with `503`; completion writes are best-effort and logged if they fail.
-- Trace configuration changes without recording secrets.
-- Expose configuration management only if an explicitly protected administration boundary is in scope.
-- Verify the update service's SQL Server race handling against LocalDB; no configuration management HTTP endpoint is exposed by this API.
-- Support path and query parameter rules after the `urlId` contract is clarified; these currently fail closed.
+The automated suite uses a recording mock upstream and EF Core InMemory. Rejected-request tests assert the upstream received no request. Unit tests cover update validation, stale-version preconditions, and history recording. InMemory does not emulate SQL Server changing a `rowversion` during a genuine concurrent write; the SQL Server race itself must be verified against LocalDB or an approved SQL Server. Applying migrations and inspecting SQL Server schema are separate local database checks.
 
-## Implemented before the test increment
+## Remaining assessment clarification
 
-- `POST /api/proxy/execute` resolves configured operations and forwards valid requests to the trusted configured destination.
-- Each request receives a server-generated correlation ID in `X-Correlation-Id`.
-- Invalid request bodies and unhandled exceptions use safe error responses that include the correlation ID.
-- Caller cancellation is logged without attempting to send a normal HTTP error response.
-- Operations are looked up by the caller's `clientId` against trusted database configuration. Unknown or disabled operations and unavailable destinations are rejected before any forwarding.
-- Validly bound execution requests must first create an audit record; if that initial write fails, execution stops with `503`. Completing an audit record is best-effort and failures are logged without secrets. Model-binding and validation rejections are now also audited as `invalid_request`, without storing body or validation details.
-- Body parameter rules support basic JSON types, required values, string maximum length, numeric ranges, and per-operation unknown-parameter policy. Path/query rules are rejected safely until the `urlId` contract is resolved.
-- Encrypted operations use an explicit provisional envelope: `json` contains Base64 `nonce`, `ciphertext`, and `tag` fields. The nonce is 12 bytes, the authentication tag is 16 bytes, and associated data is empty. Confirm this format against the assessment before treating it as final.
-- AES-GCM authentication and plaintext JSON parsing happen before parameter validation. Invalid envelopes or authentication tags are rejected with `400`; missing/invalid key configuration is rejected with `503`. Key bytes are read by reference from configuration and cleared from memory after decryption. No key or decrypted payload is logged.
-- The local key source reads Base64 key values from `EncryptionKeys:<key-reference>` configuration (User Secrets or environment variables), never from the database or committed settings.
-## Implemented in the forwarding increment
-
-- Valid configured operations are sent through `IHttpClientFactory`; the destination base URL, HTTP method, and relative path come only from database configuration.
-- Only explicitly allowlisted inbound headers are copied. Hop-by-hop headers, `Host`, and headers nominated by `Connection` are always excluded. Redirect following is disabled and no automatic retries are configured.
-- The configured destination timeout is applied to sending and reading the upstream response. Caller cancellation is rethrown and logged separately; an upstream timeout maps to `504`.
-- The incoming request is bounded by a global Kestrel limit and the operation's configured request size. The response is read as a stream with a configured maximum and a bounded buffer; oversized upstream responses map to `502`.
-- Upstream status codes and bodies are returned after a response is actually received. The audit record stores the upstream status and whether forwarding was attempted; payloads and headers are not logged.
-- `urlId` remains a required top-level request field under the provisional DTO assumption. Its meaning is unresolved, so it is not used to alter the destination URL, method, or path. The encrypted envelope shape is also still provisional.
-
-## Automated test increment
-
-- The test project uses ASP.NET Core `WebApplicationFactory`, EF Core InMemory, and a recording `HttpMessageHandler`; tests do not connect to SQL Server or LocalDB.
-- Tests cover configured successful forwarding, upstream status/body propagation, timeouts, request-size rejection, and header filtering.
-- Rejection tests assert that the recording upstream saw no request for unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, oversized requests, and unsupported configured methods.
-- Tests verify an oversized upstream response is bounded and audited, and that caller cancellation is recorded separately from an upstream timeout.
-- Audit failure tests simulate persistence errors: failure to create the initial audit record returns `503` and prevents upstream forwarding; failure to update a completed record does not replace the upstream response, and leaves the persisted audit row pending for operational monitoring.
-- Malformed JSON and missing required envelope fields are rejected before the controller action, recorded as `InvalidRequestModel`, and never forwarded. The audit operation key is the fixed value `invalid_request` because a trustworthy operation key may not be available during binding failure.
-- The test suite was added in this increment but has not been executed in this environment. Run it on a machine with the .NET 8 SDK.
-
-The precise `urlId` semantics and encrypted envelope remain assumptions pending clarification from the assessment owner.
-
-## Configuration concurrency and history increment
-
-- `OperationConfigurationUpdater` is an internal application service. It validates the proposed method/path/size settings, compares the caller's expected `rowversion`, and relies on EF Core's SQL Server concurrency predicate to catch a change that races after the read.
-- A stale version returns a `Conflict` result without changing the operation. The service does not expose an HTTP management route; that would require a separately defined and protected administration boundary.
-- Successful updates now add a `ConfigurationChange` record in the same EF Core `SaveChanges` call. It stores the operator identifier and old/new values only for the non-secret fields the service allows to change; it never stores credentials, encryption keys, request headers, or request payloads.
-- InMemory tests cover valid updates, history recording, stale version preconditions, unknown operations, and invalid method/path values. They do not emulate SQL Server's `rowversion` changing during concurrent writes; verify that race on LocalDB at home.
-- Generate the migration for `ConfigurationChanges` in Visual Studio. Migration generation does not connect to SQL Server; apply it later at home.
-
-## Local sample configuration
-
-- `sql/seed-demo-configuration.sql` inserts one minimal `customer.get` operation and a required integer body parameter rule.
-- The sample destination and operation are disabled by default; the URL is intentionally a reserved placeholder. Replace it with an approved local test upstream before activating the records.
-- The script does not add credentials or encryption keys and does not modify existing records when rerun.
+The supplied partially implemented starter repository was not present in the provided project. The task contact clarified that work should start from the clean project and that the starter-repository section should be ignored. This project therefore reports no inherited defects as fixed. The exact request/encryption examples remain documented assumptions.

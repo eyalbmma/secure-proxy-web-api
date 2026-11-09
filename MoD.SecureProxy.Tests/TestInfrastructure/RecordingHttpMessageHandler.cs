@@ -36,7 +36,7 @@ public sealed class RecordingHttpMessageHandler : HttpMessageHandler
 
         _requests.Enqueue(new RecordedUpstreamRequest(
             request.Method.Method,
-            request.RequestUri?.ToString() ?? string.Empty,
+            request.RequestUri?.AbsoluteUri ?? string.Empty,
             body,
             headers));
         _requestRecorded.TrySetResult(true);

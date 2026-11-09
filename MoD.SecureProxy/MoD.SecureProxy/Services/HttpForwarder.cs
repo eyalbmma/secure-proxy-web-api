@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using MoD.SecureProxy.Data.Entities;
 
@@ -6,6 +7,7 @@ namespace MoD.SecureProxy.Services;
 
 public sealed class HttpForwarder
 {
+    private static readonly Regex PathPlaceholder = new("\\{([A-Za-z][A-Za-z0-9_]*)\\}", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly HashSet<string> SupportedMethods = new(StringComparer.OrdinalIgnoreCase)
     {
         "GET", "POST", "PUT", "PATCH", "DELETE"
@@ -40,10 +42,12 @@ public sealed class HttpForwarder
     public async Task<HttpForwardResult> ForwardAsync(
         Operation operation,
         byte[] requestBody,
+        IReadOnlyDictionary<string, string> pathParameters,
+        IReadOnlyDictionary<string, string> queryParameters,
         IHeaderDictionary incomingHeaders,
         CancellationToken callerCancellationToken)
     {
-        if (!TryBuildTargetUri(operation, out var targetUri) ||
+        if (!TryBuildTargetUri(operation, pathParameters, queryParameters, out var targetUri) ||
             !SupportedMethods.Contains(operation.HttpMethod) ||
             operation.Destination.RequestTimeoutMilliseconds <= 0)
         {
@@ -122,7 +126,11 @@ public sealed class HttpForwarder
         }
     }
 
-    private static bool TryBuildTargetUri(Operation operation, out Uri targetUri)
+    private static bool TryBuildTargetUri(
+        Operation operation,
+        IReadOnlyDictionary<string, string> pathParameters,
+        IReadOnlyDictionary<string, string> queryParameters,
+        out Uri targetUri)
     {
         targetUri = null!;
         var baseUrl = operation.Destination.BaseUrl;
@@ -134,6 +142,7 @@ public sealed class HttpForwarder
             !string.IsNullOrEmpty(baseUri.Query) ||
             !string.IsNullOrEmpty(baseUri.Fragment) ||
             relativePath.Contains('\\') || relativePath.Contains('?') || relativePath.Contains('#') ||
+            relativePath.Contains('%') ||
             relativePath.StartsWith("//", StringComparison.Ordinal) ||
             Uri.TryCreate(relativePath, UriKind.Absolute, out _))
         {
@@ -146,8 +155,21 @@ public sealed class HttpForwarder
             return false;
         }
 
+        var replacedPath = PathPlaceholder.Replace(relativePath, match =>
+        {
+            var name = match.Groups[1].Value;
+            return pathParameters.TryGetValue(name, out var value)
+                ? Uri.EscapeDataString(value)
+                : match.Value;
+        });
+        if (replacedPath.Contains('{') || replacedPath.Contains('}') ||
+            PathPlaceholder.Matches(relativePath).Count != pathParameters.Count)
+        {
+            return false;
+        }
+
         var normalizedBase = baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : baseUrl + "/";
-        var normalizedPath = relativePath.TrimStart('/');
+        var normalizedPath = replacedPath.TrimStart('/');
         if (!Uri.TryCreate(
                 new Uri(normalizedBase, UriKind.Absolute),
                 normalizedPath,
@@ -155,6 +177,17 @@ public sealed class HttpForwarder
             resolvedUri is null)
         {
             return false;
+        }
+
+        if (queryParameters.Count > 0)
+        {
+            var encodedQuery = string.Join("&", queryParameters.Select(pair =>
+                $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+            var uriBuilder = new UriBuilder(resolvedUri)
+            {
+                Query = encodedQuery
+            };
+            resolvedUri = uriBuilder.Uri;
         }
 
         targetUri = resolvedUri;

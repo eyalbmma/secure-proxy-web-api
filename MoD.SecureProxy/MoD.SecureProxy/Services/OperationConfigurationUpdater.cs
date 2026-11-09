@@ -130,6 +130,7 @@ public sealed class OperationConfigurationUpdater
         if (string.IsNullOrWhiteSpace(path) ||
             path.Length > 2048 ||
             path.Contains('\\') ||
+            path.Contains('%') ||
             path.Contains('?') ||
             path.Contains('#') ||
             path.StartsWith("//", StringComparison.Ordinal) ||

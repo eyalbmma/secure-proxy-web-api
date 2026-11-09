@@ -21,6 +21,10 @@ public sealed record ProxySeedOptions
     public long MaximumRequestSizeBytes { get; init; } = 200_000;
     public long MaximumResponseSizeBytes { get; init; } = 2_000_000;
     public AuditFailureMode AuditFailureMode { get; init; }
+
+    public bool IncludeRequiredUrlIdPathRule { get; init; } = true;
+    public bool IncludeOptionalSearchQueryRule { get; init; }
+    public string RelativePath { get; init; } = "v1/customers/{urlId}";
 }
 
 public enum AuditFailureMode
@@ -110,7 +114,7 @@ public sealed class ProxyApiTestHost : IDisposable
             DestinationId = destination.Id,
             Destination = destination,
             HttpMethod = options.HttpMethod,
-            RelativePath = "v1/customers",
+            RelativePath = options.RelativePath,
             IsActive = options.OperationActive,
             MaxRequestSizeBytes = options.MaximumRequestSizeBytes,
             AllowUnknownParameters = false,
@@ -130,6 +134,35 @@ public sealed class ProxyApiTestHost : IDisposable
                 IsRequired = true,
                 DataType = "integer",
                 Location = ParameterLocation.Body
+            });
+        }
+
+        if (options.IncludeRequiredUrlIdPathRule)
+        {
+            operation.ParameterRules.Add(new ParameterRule
+            {
+                Id = 2,
+                OperationId = operation.Id,
+                Operation = operation,
+                ParameterName = "urlId",
+                IsRequired = true,
+                DataType = "string",
+                Location = ParameterLocation.Path
+            });
+        }
+
+        if (options.IncludeOptionalSearchQueryRule)
+        {
+            operation.ParameterRules.Add(new ParameterRule
+            {
+                Id = 3,
+                OperationId = operation.Id,
+                Operation = operation,
+                ParameterName = "search",
+                IsRequired = false,
+                DataType = "string",
+                MaximumLength = 100,
+                Location = ParameterLocation.Query
             });
         }
 
