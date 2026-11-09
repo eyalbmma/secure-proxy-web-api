@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using MoD.SecureProxy.Data;
 using MoD.SecureProxy.Data.Entities;
@@ -26,9 +27,10 @@ public sealed class OperationConfigurationUpdater
         int operationId,
         byte[] expectedRowVersion,
         OperationConfigurationUpdate update,
+        string changedBy,
         CancellationToken cancellationToken)
     {
-        var validationError = Validate(update);
+        var validationError = Validate(update, changedBy);
         if (validationError is not null)
         {
             return OperationConfigurationUpdateResult.Invalid(validationError);
@@ -54,11 +56,41 @@ public sealed class OperationConfigurationUpdater
         var versionProperty = _dbContext.Entry(operation).Property(item => item.RowVersion);
         versionProperty.OriginalValue = expectedRowVersion.ToArray();
 
-        operation.IsActive = update.IsActive;
-        operation.HttpMethod = update.HttpMethod.Trim().ToUpperInvariant();
-        operation.RelativePath = update.RelativePath.Trim();
-        operation.MaxRequestSizeBytes = update.MaxRequestSizeBytes;
-        operation.AllowUnknownParameters = update.AllowUnknownParameters;
+        var oldValues = new OperationConfigurationValues(
+            operation.IsActive,
+            operation.HttpMethod,
+            operation.RelativePath,
+            operation.MaxRequestSizeBytes,
+            operation.AllowUnknownParameters);
+        var newValues = new OperationConfigurationValues(
+            update.IsActive,
+            update.HttpMethod.Trim().ToUpperInvariant(),
+            update.RelativePath.Trim(),
+            update.MaxRequestSizeBytes,
+            update.AllowUnknownParameters);
+
+        var changedFields = GetChangedFields(oldValues, newValues);
+        if (changedFields.Count == 0)
+        {
+            return OperationConfigurationUpdateResult.Updated(operation.RowVersion.ToArray());
+        }
+
+        operation.IsActive = newValues.IsActive;
+        operation.HttpMethod = newValues.HttpMethod;
+        operation.RelativePath = newValues.RelativePath;
+        operation.MaxRequestSizeBytes = newValues.MaxRequestSizeBytes;
+        operation.AllowUnknownParameters = newValues.AllowUnknownParameters;
+
+        _dbContext.ConfigurationChanges.Add(new ConfigurationChange
+        {
+            EntityType = "Operation",
+            EntityId = operation.Id,
+            ChangedBy = changedBy.Trim(),
+            ChangedAtUtc = DateTime.UtcNow,
+            ChangedFieldsJson = JsonSerializer.Serialize(changedFields),
+            OldValuesJson = JsonSerializer.Serialize(oldValues),
+            NewValuesJson = JsonSerializer.Serialize(newValues)
+        });
 
         try
         {
@@ -71,11 +103,16 @@ public sealed class OperationConfigurationUpdater
         }
     }
 
-    private static string? Validate(OperationConfigurationUpdate update)
+    private static string? Validate(OperationConfigurationUpdate update, string changedBy)
     {
         if (update is null)
         {
             return "invalid_update";
+        }
+
+        if (string.IsNullOrWhiteSpace(changedBy) || changedBy.Trim().Length > 150)
+        {
+            return "invalid_changed_by";
         }
 
         if (string.IsNullOrWhiteSpace(update.HttpMethod) ||
@@ -105,6 +142,28 @@ public sealed class OperationConfigurationUpdater
 
         return null;
     }
+
+    private static List<string> GetChangedFields(
+        OperationConfigurationValues oldValues,
+        OperationConfigurationValues newValues)
+    {
+        var changed = new List<string>();
+        if (oldValues.IsActive != newValues.IsActive) changed.Add(nameof(Operation.IsActive));
+        if (oldValues.HttpMethod != newValues.HttpMethod) changed.Add(nameof(Operation.HttpMethod));
+        if (oldValues.RelativePath != newValues.RelativePath) changed.Add(nameof(Operation.RelativePath));
+        if (oldValues.MaxRequestSizeBytes != newValues.MaxRequestSizeBytes)
+            changed.Add(nameof(Operation.MaxRequestSizeBytes));
+        if (oldValues.AllowUnknownParameters != newValues.AllowUnknownParameters)
+            changed.Add(nameof(Operation.AllowUnknownParameters));
+        return changed;
+    }
+
+    private sealed record OperationConfigurationValues(
+        bool IsActive,
+        string HttpMethod,
+        string RelativePath,
+        long MaxRequestSizeBytes,
+        bool AllowUnknownParameters);
 }
 
 public sealed record OperationConfigurationUpdate(

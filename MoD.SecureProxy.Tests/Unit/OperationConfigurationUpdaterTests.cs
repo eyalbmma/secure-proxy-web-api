@@ -24,6 +24,7 @@ public sealed class OperationConfigurationUpdaterTests
                 RelativePath: "v2/customers",
                 MaxRequestSizeBytes: 4096,
                 AllowUnknownParameters: true),
+            "test-operator",
             CancellationToken.None);
 
         Assert.Equal(OperationConfigurationUpdateStatus.Updated, result.Status);
@@ -36,6 +37,14 @@ public sealed class OperationConfigurationUpdaterTests
         Assert.Equal("v2/customers", updated.RelativePath);
         Assert.Equal(4096, updated.MaxRequestSizeBytes);
         Assert.True(updated.AllowUnknownParameters);
+
+        var change = Assert.Single(await dbContext.ConfigurationChanges.AsNoTracking().ToListAsync());
+        Assert.Equal("Operation", change.EntityType);
+        Assert.Equal(fixture.OperationId, change.EntityId);
+        Assert.Equal("test-operator", change.ChangedBy);
+        Assert.Contains(nameof(Operation.RelativePath), change.ChangedFieldsJson, StringComparison.Ordinal);
+        Assert.Contains("v1/customers", change.OldValuesJson, StringComparison.Ordinal);
+        Assert.Contains("v2/customers", change.NewValuesJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -55,6 +64,7 @@ public sealed class OperationConfigurationUpdaterTests
                 RelativePath: "v2/customers",
                 MaxRequestSizeBytes: 4096,
                 AllowUnknownParameters: true),
+            "test-operator",
             CancellationToken.None);
 
         Assert.Equal(OperationConfigurationUpdateStatus.Conflict, result.Status);
@@ -63,6 +73,7 @@ public sealed class OperationConfigurationUpdaterTests
         Assert.True(unchanged.IsActive);
         Assert.Equal("POST", unchanged.HttpMethod);
         Assert.Equal("v1/customers", unchanged.RelativePath);
+        Assert.Empty(await dbContext.ConfigurationChanges.AsNoTracking().ToListAsync());
     }
 
     [Theory]
@@ -85,6 +96,7 @@ public sealed class OperationConfigurationUpdaterTests
             fixture.OperationId,
             fixture.RowVersion,
             update,
+            "test-operator",
             CancellationToken.None);
 
         Assert.Equal(OperationConfigurationUpdateStatus.Invalid, result.Status);
@@ -106,6 +118,7 @@ public sealed class OperationConfigurationUpdaterTests
             int.MaxValue,
             fixture.RowVersion,
             new OperationConfigurationUpdate(true, "GET", "v1/customers", 4096, false),
+            "test-operator",
             CancellationToken.None);
 
         Assert.Equal(OperationConfigurationUpdateStatus.NotFound, result.Status);

@@ -18,6 +18,14 @@ sqllocaldb create MoDSecureProxy 15.0 -s
 
 In Visual Studio, open the solution and run `Update-Database` from the NuGet Package Manager Console. The EF Core migrations create the schema. The database contains no seeded destination or operation records yet; a request cannot be forwarded until trusted configuration has been added.
 
+This increment adds the `ConfigurationChanges` table to the EF model. Generate its migration in Visual Studio's Package Manager Console (select `MoD.SecureProxy` as the default project):
+
+```powershell
+Add-Migration AddConfigurationChangeHistory -OutputDir Data\Migrations
+```
+
+Generating the migration does not require a running SQL Server. Apply it with `Update-Database` when the database is available, then commit the generated migration and model snapshot.
+
 For a different SQL Server, override `ConnectionStrings:ProxyDb` through an environment variable named `ConnectionStrings__ProxyDb`. Do not commit credentials.
 
 ## Encryption key configuration
@@ -40,4 +48,4 @@ dotnet test .\MoD.SecureProxy\MoD.SecureProxy.sln
 
 The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, request size limits, and unsupported methods. They also cover header filtering, upstream errors, upstream response size limits, timeouts, and caller cancellation.
 
-Path/query parameter rules, configuration update APIs/history, seeded sample configuration, and remaining edge-case tests are still to be completed. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.
+Path/query parameter rules, any separately authorized configuration-management endpoint, seeded sample configuration, and remaining edge-case tests are still to be completed. The configuration update service currently records history internally and is not exposed over HTTP. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.

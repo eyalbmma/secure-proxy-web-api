@@ -12,6 +12,7 @@ public sealed class ProxyDbContext(DbContextOptions<ProxyDbContext> options) : D
     public DbSet<HeaderRule> HeaderRules => Set<HeaderRule>();
     public DbSet<EncryptionProfile> EncryptionProfiles => Set<EncryptionProfile>();
     public DbSet<RequestLog> RequestLogs => Set<RequestLog>();
+    public DbSet<ConfigurationChange> ConfigurationChanges => Set<ConfigurationChange>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -99,6 +100,18 @@ public sealed class ProxyDbContext(DbContextOptions<ProxyDbContext> options) : D
                 .WithMany()
                 .HasForeignKey(x => x.DestinationId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ConfigurationChange>(entity =>
+        {
+            entity.ToTable("ConfigurationChanges");
+            entity.HasKey(change => change.Id);
+            entity.Property(change => change.EntityType).HasMaxLength(50).IsRequired();
+            entity.Property(change => change.ChangedBy).HasMaxLength(150).IsRequired();
+            entity.Property(change => change.ChangedFieldsJson).HasColumnType("nvarchar(max)").IsRequired();
+            entity.Property(change => change.OldValuesJson).HasColumnType("nvarchar(max)").IsRequired();
+            entity.Property(change => change.NewValuesJson).HasColumnType("nvarchar(max)").IsRequired();
+            entity.HasIndex(change => new { change.EntityType, change.EntityId, change.ChangedAtUtc });
         });
     }
 }

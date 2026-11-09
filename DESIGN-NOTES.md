@@ -24,7 +24,7 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 
 - Persist audit metadata without credentials or payload contents. Initial audit-write failure blocks execution with `503`; completion writes are best-effort and logged if they fail.
 - Trace configuration changes without recording secrets.
-- Add configuration-change history without secrets.
+- Expose configuration management only if an explicitly protected administration boundary is in scope.
 - Verify the update service's SQL Server race handling against LocalDB; no configuration management HTTP endpoint is exposed by this API.
 - Support path and query parameter rules after the `urlId` contract is clarified; these currently fail closed.
 
@@ -59,8 +59,10 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 
 The precise `urlId` semantics and encrypted envelope remain assumptions pending clarification from the assessment owner.
 
-## Configuration concurrency increment
+## Configuration concurrency and history increment
 
 - `OperationConfigurationUpdater` is an internal application service. It validates the proposed method/path/size settings, compares the caller's expected `rowversion`, and relies on EF Core's SQL Server concurrency predicate to catch a change that races after the read.
 - A stale version returns a `Conflict` result without changing the operation. The service does not expose an HTTP management route; that would require a separately defined and protected administration boundary.
-- InMemory tests cover valid updates, stale version preconditions, unknown operations, and invalid method/path values. They do not emulate SQL Server's `rowversion` changing during concurrent writes; verify that race on LocalDB at home.
+- Successful updates now add a `ConfigurationChange` record in the same EF Core `SaveChanges` call. It stores the operator identifier and old/new values only for the non-secret fields the service allows to change; it never stores credentials, encryption keys, request headers, or request payloads.
+- InMemory tests cover valid updates, history recording, stale version preconditions, unknown operations, and invalid method/path values. They do not emulate SQL Server's `rowversion` changing during concurrent writes; verify that race on LocalDB at home.
+- Generate the migration for `ConfigurationChanges` in Visual Studio. Migration generation does not connect to SQL Server; apply it later at home.
