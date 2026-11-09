@@ -5,6 +5,7 @@ using MoD.SecureProxy.Middleware;
 using MoD.SecureProxy.Models;
 using MoD.SecureProxy.Services;
 using MoD.SecureProxy.Security;
+using MoD.SecureProxy.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,9 +22,14 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Add services to the container.
 
-builder.Services.AddControllers()
+builder.Services.AddScoped<InvalidProxyRequestAuditFilter>();
+builder.Services.AddControllers(options =>
+    options.Filters.AddService<InvalidProxyRequestAuditFilter>())
     .ConfigureApiBehaviorOptions(options =>
     {
+        // The scoped action filter audits invalid model state before returning a safe error.
+        // Disable ApiController's automatic short-circuit so it cannot bypass that filter.
+        options.SuppressModelStateInvalidFilter = true;
         options.InvalidModelStateResponseFactory = context =>
         {
             var correlationId = context.HttpContext.Items[CorrelationIdMiddleware.ContextItemKey] as string

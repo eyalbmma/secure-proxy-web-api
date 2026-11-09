@@ -35,7 +35,7 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 - Invalid request bodies and unhandled exceptions use safe error responses that include the correlation ID.
 - Caller cancellation is logged without attempting to send a normal HTTP error response.
 - Operations are looked up by the caller's `clientId` against trusted database configuration. Unknown or disabled operations and unavailable destinations are rejected before any forwarding.
-- Validly bound execution requests must first create an audit record; if that initial write fails, execution stops with `503`. Completing an audit record is best-effort and failures are logged without secrets. Framework-rejected malformed bodies are not yet persisted to `RequestLogs` and must be covered before final delivery.
+- Validly bound execution requests must first create an audit record; if that initial write fails, execution stops with `503`. Completing an audit record is best-effort and failures are logged without secrets. Model-binding and validation rejections are now also audited as `invalid_request`, without storing body or validation details.
 - Body parameter rules support basic JSON types, required values, string maximum length, numeric ranges, and per-operation unknown-parameter policy. Path/query rules are rejected safely until the `urlId` contract is resolved.
 - Encrypted operations use an explicit provisional envelope: `json` contains Base64 `nonce`, `ciphertext`, and `tag` fields. The nonce is 12 bytes, the authentication tag is 16 bytes, and associated data is empty. Confirm this format against the assessment before treating it as final.
 - AES-GCM authentication and plaintext JSON parsing happen before parameter validation. Invalid envelopes or authentication tags are rejected with `400`; missing/invalid key configuration is rejected with `503`. Key bytes are read by reference from configuration and cleared from memory after decryption. No key or decrypted payload is logged.
@@ -56,6 +56,7 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 - Rejection tests assert that the recording upstream saw no request for unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, oversized requests, and unsupported configured methods.
 - Tests verify an oversized upstream response is bounded and audited, and that caller cancellation is recorded separately from an upstream timeout.
 - Audit failure tests simulate persistence errors: failure to create the initial audit record returns `503` and prevents upstream forwarding; failure to update a completed record does not replace the upstream response, and leaves the persisted audit row pending for operational monitoring.
+- Malformed JSON and missing required envelope fields are rejected before the controller action, recorded as `InvalidRequestModel`, and never forwarded. The audit operation key is the fixed value `invalid_request` because a trustworthy operation key may not be available during binding failure.
 - The test suite was added in this increment but has not been executed in this environment. Run it on a machine with the .NET 8 SDK.
 
 The precise `urlId` semantics and encrypted envelope remain assumptions pending clarification from the assessment owner.

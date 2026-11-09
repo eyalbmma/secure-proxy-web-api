@@ -50,6 +50,6 @@ The API performs operation lookup, fail-closed checks, body parameter validation
 dotnet test .\MoD.SecureProxy\MoD.SecureProxy.sln
 ```
 
-The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, request size limits, and unsupported methods. They also cover header filtering, upstream errors, upstream response size limits, timeouts, caller cancellation, and the defined audit-failure behavior. Audit failure simulation uses an EF Core interceptor; no SQL Server is needed for these tests.
+The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, malformed JSON, missing required envelope fields, invalid parameters, invalid encrypted payloads, request size limits, and unsupported methods. They also cover header filtering, upstream errors, upstream response size limits, timeouts, caller cancellation, and the defined audit-failure behavior. The tests use EF Core InMemory and an interceptor; no SQL Server is needed.
 
 Path/query parameter rules, any separately authorized configuration-management endpoint, and remaining edge-case tests are still to be completed. The configuration update service currently records history internally and is not exposed over HTTP. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.

@@ -53,6 +53,66 @@ public sealed class ProxyExecutionTests
     }
 
     [Fact]
+    public async Task MalformedJsonIsAuditedAndNeverReachesUpstream()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync();
+
+        using var response = await host.Client.PostAsync(
+            "/api/proxy/execute",
+            new StringContent("{", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(host.Upstream.Requests);
+        var log = Assert.Single(await host.ReadRequestLogsAsync());
+        Assert.Equal("invalid_request", log.OperationKey);
+        Assert.Equal("Rejected", log.Outcome);
+        Assert.Equal("InvalidRequestModel", log.FailureReason);
+        Assert.False(log.ForwardingOccurred);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("invalid_request", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task MissingRequiredEnvelopeFieldIsAuditedAndNeverReachesUpstream()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync();
+        using var response = await host.Client.PostAsJsonAsync("/api/proxy/execute", new
+        {
+            clientId = "customer.get",
+            json = new { customerId = 123 }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(host.Upstream.Requests);
+        var log = Assert.Single(await host.ReadRequestLogsAsync());
+        Assert.Equal("invalid_request", log.OperationKey);
+        Assert.Equal("Rejected", log.Outcome);
+        Assert.Equal("InvalidRequestModel", log.FailureReason);
+        Assert.False(log.ForwardingOccurred);
+    }
+
+    [Fact]
+    public async Task InvalidModelWithUnavailableAuditStoreFailsClosed()
+    {
+        using var host = await ProxyApiTestHost.CreateAsync(new ProxySeedOptions
+        {
+            AuditFailureMode = AuditFailureMode.FailInitialWrite
+        });
+
+        using var response = await host.Client.PostAsync(
+            "/api/proxy/execute",
+            new StringContent("{", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Empty(host.Upstream.Requests);
+        Assert.Empty(await host.ReadRequestLogsAsync());
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("audit_unavailable", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task DisabledOperationIsRejectedAndNeverReachesUpstream()
     {
         using var host = await ProxyApiTestHost.CreateAsync(new ProxySeedOptions { OperationActive = false });
