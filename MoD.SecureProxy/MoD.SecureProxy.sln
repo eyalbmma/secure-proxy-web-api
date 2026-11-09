@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.36623.8 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoD.SecureProxy", "MoD.SecureProxy\MoD.SecureProxy.csproj", "{E24554E7-4747-4AD7-9CF2-0FF3207290BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoD.SecureProxy.Tests", "..\MoD.SecureProxy.Tests\MoD.SecureProxy.Tests.csproj", "{BF6B3CC7-9AC2-4D2D-AB3B-EC9381D4D852}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{E24554E7-4747-4AD7-9CF2-0FF3207290BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E24554E7-4747-4AD7-9CF2-0FF3207290BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E24554E7-4747-4AD7-9CF2-0FF3207290BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BF6B3CC7-9AC2-4D2D-AB3B-EC9381D4D852}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BF6B3CC7-9AC2-4D2D-AB3B-EC9381D4D852}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BF6B3CC7-9AC2-4D2D-AB3B-EC9381D4D852}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BF6B3CC7-9AC2-4D2D-AB3B-EC9381D4D852}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

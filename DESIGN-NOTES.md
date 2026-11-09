@@ -24,18 +24,17 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 
 - Persist audit metadata without credentials or payload contents. Initial audit-write failure blocks execution with `503`; completion writes are best-effort and logged if they fail.
 - Trace configuration changes without recording secrets.
-- Add automated tests with a recording mock upstream and prove rejected requests were not sent.
+- Add configuration-change history without secrets.
 - Complete configuration update handling and prove SQL Server `rowversion` conflicts return `409`.
 - Support path and query parameter rules after the `urlId` contract is clarified; these currently fail closed.
 
-## Implemented in the current increment
+## Implemented before the test increment
 
-- `POST /api/proxy/execute` is scaffolded and returns `501 Not Implemented`; it does not claim forwarding succeeded.
+- `POST /api/proxy/execute` resolves configured operations and forwards valid requests to the trusted configured destination.
 - Each request receives a server-generated correlation ID in `X-Correlation-Id`.
 - Invalid request bodies and unhandled exceptions use safe error responses that include the correlation ID.
 - Caller cancellation is logged without attempting to send a normal HTTP error response.
 - Operations are looked up by the caller's `clientId` against trusted database configuration. Unknown or disabled operations and unavailable destinations are rejected before any forwarding.
-- An active operation currently returns `501 Not Implemented`; no upstream request is sent in this increment.
 - Validly bound execution requests must first create an audit record; if that initial write fails, execution stops with `503`. Completing an audit record is best-effort and failures are logged without secrets. Framework-rejected malformed bodies are not yet persisted to `RequestLogs` and must be covered before final delivery.
 - Body parameter rules support basic JSON types, required values, string maximum length, numeric ranges, and per-operation unknown-parameter policy. Path/query rules are rejected safely until the `urlId` contract is resolved.
 - Encrypted operations use an explicit provisional envelope: `json` contains Base64 `nonce`, `ciphertext`, and `tag` fields. The nonce is 12 bytes, the authentication tag is 16 bytes, and associated data is empty. Confirm this format against the assessment before treating it as final.
@@ -50,4 +49,11 @@ Callers will not choose the destination URL, HTTP method, or destination path. T
 - Upstream status codes and bodies are returned after a response is actually received. The audit record stores the upstream status and whether forwarding was attempted; payloads and headers are not logged.
 - `urlId` remains a required top-level request field under the provisional DTO assumption. Its meaning is unresolved, so it is not used to alter the destination URL, method, or path. The encrypted envelope shape is also still provisional.
 
-This document records the first implementation increment and will be updated as those decisions are implemented.
+## Automated test increment
+
+- The test project uses ASP.NET Core `WebApplicationFactory`, EF Core InMemory, and a recording `HttpMessageHandler`; tests do not connect to SQL Server or LocalDB.
+- Tests cover configured successful forwarding, upstream status/body propagation, timeouts, request-size rejection, and header filtering.
+- Rejection tests assert that the recording upstream saw no request for unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, oversized requests, and unsupported configured methods.
+- The test suite was added in this increment but has not been executed in this environment. Run it on a machine with the .NET 8 SDK.
+
+The precise `urlId` semantics and encrypted envelope remain assumptions pending clarification from the assessment owner.

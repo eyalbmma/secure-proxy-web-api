@@ -148,10 +148,16 @@ public sealed class HttpForwarder
 
         var normalizedBase = baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : baseUrl + "/";
         var normalizedPath = relativePath.TrimStart('/');
-        if (!Uri.TryCreate(new Uri(normalizedBase, UriKind.Absolute), normalizedPath, out targetUri))
+        if (!Uri.TryCreate(
+                new Uri(normalizedBase, UriKind.Absolute),
+                normalizedPath,
+                out var resolvedUri) ||
+            resolvedUri is null)
         {
             return false;
         }
+
+        targetUri = resolvedUri;
 
         return targetUri.Scheme == baseUri.Scheme &&
             string.Equals(targetUri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase) &&

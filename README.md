@@ -32,4 +32,12 @@ The endpoint is `POST /api/proxy/execute`. The current provisional envelope is `
 
 ## Current implementation status
 
-The API performs operation lookup, fail-closed checks, body parameter validation, optional AES-GCM decryption, header allowlisting, bounded request/response handling, and configured upstream forwarding. Path/query parameter rules, configuration update APIs/history, seeded sample configuration, and automated tests remain to be completed. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.
+The API performs operation lookup, fail-closed checks, body parameter validation, optional AES-GCM decryption, header allowlisting, bounded request/response handling, and configured upstream forwarding. Automated integration tests use an in-memory database and a recording mock upstream; they do not require SQL Server or LocalDB. Run them from the repository root with:
+
+```powershell
+dotnet test .\MoD.SecureProxy\MoD.SecureProxy.sln
+```
+
+The tests cover successful configured forwarding and rejected requests that must not reach upstream, including unknown/disabled operations, disabled destinations, invalid parameters, invalid encrypted payloads, size limits, and unsupported methods. They also cover header filtering, upstream errors, and timeouts.
+
+Path/query parameter rules, configuration update APIs/history, seeded sample configuration, and remaining edge-case tests are still to be completed. The supplied partially implemented starter repository was not included, so no pre-existing defects are claimed as fixed.
