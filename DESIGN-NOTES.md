@@ -26,12 +26,19 @@ This interpretation is documented as an assumption, not as an established meanin
 - Each request is correlated with `X-Correlation-Id`. Error responses are consistent and non-sensitive. Logs and audit records omit request/response payloads, keys, and credentials.
 - Request and response size bounds are enforced. Upstream response reading is streamed into a bounded buffer. `IHttpClientFactory` manages clients, redirects are disabled, the configured timeout applies to send/read, and caller cancellation remains distinct from upstream timeout. No automatic retry is used because retry safety depends on operation semantics.
 - Initial audit persistence is mandatory and fails closed. Audit completion is best-effort after a request has been forwarded; failures are logged for operations monitoring and do not replace the received upstream result.
-- Mutable operation updates compare the supplied SQL Server `rowversion`, also use EF Core's concurrency predicate at save time, and record the allowed non-secret before/after fields in the same save. The update service is not exposed over HTTP.
-- No cache is used, so configuration changes are observed on subsequent database lookups without invalidation semantics.
+- Mutable operation updates compare the supplied SQL Server `rowversion`, also use EF Core's concurrency predicate at save time, and record the allowed non-secret before/after fields in the same save. The update service is not exposed over HTTP. It returns a conflict result for a stale version or a save-time concurrency exception; if a protected management endpoint is added later, that result should map to HTTP `409 Conflict`.
+- Configuration history is written for operation updates performed through `OperationConfigurationUpdater`. Direct database edits and destination changes are not recorded by that service; no configuration-management endpoint is exposed.
+- No cache is used. Every execution performs a database lookup. A request that already loaded its operation/destination continues with that snapshot if the configuration is disabled while it is in flight; disabling takes effect for subsequent lookups after the update commits. The current design does not attempt to cancel or revoke in-flight requests.
+
+## Retries, idempotency, and resilience
+
+- The proxy makes no automatic retries. A connection failure or timeout after sending a request can leave it unclear whether the upstream processed it, so retrying a `POST` can duplicate a side effect. A caller should retry only when it knows the operation is idempotent or can establish that the upstream did not process the request.
+- For a `POST` that supports deduplication, the caller/upstream must agree on an idempotency-key contract. This proxy does not create idempotency keys; a key is forwarded only if it is explicitly allowed by that operation's header rules and the upstream enforces deduplication.
+- Rate limiting, bounded concurrency, and circuit breaking are not implemented in this assessment version. They should be considered at the hosting/API gateway or added per destination if the deployment traffic and availability requirements justify them. This avoids introducing resilience behavior without a defined load profile or upstream retry/idempotency contract.
 
 ## Verification status and limits
 
-The automated suite uses a recording mock upstream and EF Core InMemory. Rejected-request tests assert the upstream received no request. Unit tests cover update validation, stale-version preconditions, and history recording. InMemory does not emulate SQL Server changing a `rowversion` during a genuine concurrent write; the SQL Server race itself must be verified against LocalDB or an approved SQL Server. Applying migrations and inspecting SQL Server schema are separate local database checks.
+The automated suite uses a recording mock upstream and EF Core InMemory. Rejected-request tests assert the upstream received no request. Unit tests cover update validation, stale-version preconditions, and history recording. InMemory does not emulate SQL Server changing a `rowversion` during a genuine concurrent write; the SQL Server race itself must be verified against LocalDB or an approved SQL Server. Applying migrations and inspecting SQL Server schema are separate local database checks. Do not describe the SQL Server race as tested until that verification has actually been performed.
 
 ## Remaining assessment clarification
 
