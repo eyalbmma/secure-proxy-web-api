@@ -1,6 +1,16 @@
-@MoD.SecureProxy_HostAddress = http://localhost:5273
+@MoD.SecureProxy_HostAddress = https://localhost:7146
 
-GET {{MoD.SecureProxy_HostAddress}}/weatherforecast/
+# Assumed request shape only. The meaning of urlId is still unresolved.
+POST {{MoD.SecureProxy_HostAddress}}/api/proxy/execute
+Content-Type: application/json
 Accept: application/json
+
+{
+  "clientId": "customer.get",
+  "urlId": "123",
+  "json": {
+    "id": 1
+  }
+}
 
 ###

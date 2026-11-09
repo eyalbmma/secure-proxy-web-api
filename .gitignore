@@ -10,3 +10,9 @@
 **/appsettings.Local.json
 **/appsettings.*.local.json
 **/secrets.json
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key

@@ -1,11 +1,48 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
+using MoD.SecureProxy.Data;
+using MoD.SecureProxy.Middleware;
+using MoD.SecureProxy.Models;
+using MoD.SecureProxy.Services;
+using MoD.SecureProxy.Security;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var correlationId = context.HttpContext.Items[CorrelationIdMiddleware.ContextItemKey] as string
+                ?? context.HttpContext.TraceIdentifier;
+
+            return new BadRequestObjectResult(new ApiErrorResponse(
+                "invalid_request",
+                "The request body is invalid.",
+                correlationId));
+        };
+    });
+builder.Services.AddAuthorization();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+var connectionString = builder.Configuration.GetConnectionString("ProxyDb");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Connection string 'ProxyDb' is missing. Configure it with User Secrets or an environment variable.");
+}
+
+builder.Services.AddDbContext<ProxyDbContext>(options =>
+    options.UseSqlServer(connectionString));
+builder.Services.AddScoped<OperationLookup>();
+builder.Services.AddScoped<RequestAuditor>();
+builder.Services.AddScoped<RequestValidator>();
+builder.Services.AddScoped<IKeySource, ConfigurationKeySource>();
+builder.Services.AddScoped<AesGcmPayloadDecryptor>();
 
 var app = builder.Build();
 
@@ -17,6 +54,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ErrorHandlingMiddleware>();
 
 app.UseAuthorization();
 
